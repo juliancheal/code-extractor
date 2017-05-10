@@ -1,0 +1,8 @@
+---
+name:
+upstream:
+upstream_branch:
+:extractions:
+  -
+  -
+destination:
