@@ -17,6 +17,7 @@ class CodeExtractor
     puts @extraction
     clone
     extract_branch
+    remove_remote
     remove_tags
     filter_branch
   end
@@ -40,6 +41,10 @@ class CodeExtractor
     extractions = @extraction[:extractions].join(' ')
     `git rm -r #{extractions}`
     `git commit -m "extract #{@extraction[:name]} provider"`
+  end
+
+  def remove_remote
+    `git remote rm upstream`
   end
 
   def remove_tags
