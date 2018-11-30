@@ -8,6 +8,9 @@ class CodeExtractor
   def initialize(extraction = 'extractions.yml')
     @extraction = YAML.load_file(extraction)
     @extraction[:upstream_branch] ||= "master"
+
+    missing = %i[name destination upstream upstream_name extractions].reject { |k| @extraction[k] }
+    raise ArgumentError, "#{missing.map(&:inspect).join(", ")} key(s) missing" if missing.any?
   end
 
   def extract
