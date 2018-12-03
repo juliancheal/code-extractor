@@ -7,12 +7,17 @@ class CodeExtractor
 
   def initialize(extraction = 'extractions.yml')
     @extraction = YAML.load_file(extraction)
+    @extraction[:upstream_branch] ||= "master"
+
+    missing = %i[name destination upstream upstream_name extractions].reject { |k| @extraction[k] }
+    raise ArgumentError, "#{missing.map(&:inspect).join(", ")} key(s) missing" if missing.any?
   end
 
   def extract
     puts @extraction
     clone
     extract_branch
+    remove_remote
     remove_tags
     filter_branch
   end
@@ -20,14 +25,14 @@ class CodeExtractor
   def clone
     return if Dir.exist?(@extraction[:destination])
     puts 'Cloning…'
-    system "git clone -o upstream git@github.com:ManageIQ/manageiq.git #{@extraction[:destination]}"
+    system "git clone -o upstream #{@extraction[:upstream]} #{@extraction[:destination]}"
   end
 
   def extract_branch
     puts 'Extracting Branch…'
     Dir.chdir(@extraction[:destination])
     branch = "extract_#{@extraction[:name]}"
-    `git checkout master`
+    `git checkout #{@extraction[:upstream_branch]}`
     `git fetch upstream && git rebase upstream/master`
     if system("git branch | grep #{branch}")
       `git branch -D #{branch}`
@@ -36,6 +41,10 @@ class CodeExtractor
     extractions = @extraction[:extractions].join(' ')
     `git rm -r #{extractions}`
     `git commit -m "extract #{@extraction[:name]} provider"`
+  end
+
+  def remove_remote
+    `git remote rm upstream`
   end
 
   def remove_tags
@@ -56,8 +65,8 @@ class CodeExtractor
     cat -
     echo
     echo
-    echo "(transferred from ManageIQ/manageiq@$GIT_COMMIT)"
-    ' -- --all -- #{extractions}`
+    echo "(transferred from #{@extraction[:upstream_name]}@$GIT_COMMIT)"
+    ' -- #{@extraction[:upstream_branch]} -- #{extractions}`
   end
 end
 
