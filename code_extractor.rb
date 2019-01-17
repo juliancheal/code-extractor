@@ -42,7 +42,7 @@ class CodeExtractor
     `git checkout -b #{branch}`
     extractions = @extraction[:extractions].join(' ')
     `git rm -r #{extractions}`
-    `git commit -m "extract #{@extraction[:name]} provider"`
+    `git commit -m "Extract #{@extraction[:name]}"`
   end
 
   def remove_remote
