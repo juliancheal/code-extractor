@@ -5,6 +5,10 @@ require 'yaml'
 class CodeExtractor
   attr_reader :extraction
 
+  def self.run
+    new.extract
+  end
+
   def initialize(extraction = 'extractions.yml')
     @extraction = YAML.load_file(extraction)
     @extraction[:upstream_branch] ||= "master"
@@ -72,6 +76,6 @@ class CodeExtractor
   end
 end
 
-code_extractor = CodeExtractor.new
-
-code_extractor.extract
+if $PROGRAM_NAME == __FILE__
+  CodeExtractor.run
+end
