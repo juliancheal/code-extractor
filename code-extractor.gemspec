@@ -23,4 +23,6 @@ Gem::Specification.new do |spec|
   spec.bindir        = "bin"
   spec.executables   = ["code-extractor"]
   spec.require_paths = ["lib"]
+
+  spec.add_development_dependency "rake", "~> 10.0"
 end
