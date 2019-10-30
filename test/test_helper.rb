@@ -80,7 +80,8 @@ module CodeExtractor
       File.write extractions_yml, extractions_yaml
 
       capture_subprocess_io do
-        CodeExtractor::Runner.new(extractions_yml).extract
+        config = Config.new extractions_yml
+        Runner.new(config).extract
       end
     ensure
       Dir.chdir pwd

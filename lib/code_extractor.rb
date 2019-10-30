@@ -8,21 +8,38 @@ module CodeExtractor
   end
   module_function :run
 
-  class Runner
-    attr_reader :extraction
+  class Config
+    def initialize(config_file = 'extractions.yml')
+      @config = YAML.load_file(config_file)
 
-    def initialize(extraction = 'extractions.yml')
-      @extraction = YAML.load_file(extraction)
-      @extraction[:upstream_branch] ||= "master"
+      @config[:upstream_branch] ||= "master"
+      @config[:destination]       = File.expand_path(@config[:destination])
 
-      missing = %i[name destination upstream upstream_name extractions].reject { |k| @extraction[k] }
+      validate!
+    end
+
+    def [](key)
+      @config[key]
+    end
+
+    def inspect
+      @config.inspect
+    end
+    alias to_s inspect
+
+    def validate!
+      missing = %i[name destination upstream upstream_name extractions].reject { |k| @config[k] }
       raise ArgumentError, "#{missing.map(&:inspect).join(", ")} key(s) missing" if missing.any?
+    end
+  end
 
-      @extraction[:destination] = File.expand_path(@extraction[:destination])
+  class Runner
+    def initialize config = nil
+      @config = config || Config.new
     end
 
     def extract
-      puts @extraction
+      puts @config
       clone
       extract_branch
       remove_remote
@@ -31,24 +48,24 @@ module CodeExtractor
     end
 
     def clone
-      return if Dir.exist?(@extraction[:destination])
+      return if Dir.exist?(@config[:destination])
       puts 'Cloning…'
-      system "git clone -o upstream #{@extraction[:upstream]} #{@extraction[:destination]}"
+      system "git clone -o upstream #{@config[:upstream]} #{@config[:destination]}"
     end
 
     def extract_branch
       puts 'Extracting Branch…'
-      Dir.chdir(@extraction[:destination])
-      branch = "extract_#{@extraction[:name]}"
-      `git checkout #{@extraction[:upstream_branch]}`
+      Dir.chdir(@config[:destination])
+      branch = "extract_#{@config[:name]}"
+      `git checkout #{@config[:upstream_branch]}`
       `git fetch upstream && git rebase upstream/master`
       if system("git branch | grep #{branch}")
         `git branch -D #{branch}`
       end
       `git checkout -b #{branch}`
-      extractions = @extraction[:extractions].join(' ')
+      extractions = @config[:extractions].join(' ')
       `git rm -r #{extractions}`
-      `git commit -m "Extract #{@extraction[:name]}"`
+      `git commit -m "Extract #{@config[:name]}"`
     end
 
     def remove_remote
@@ -65,7 +82,7 @@ module CodeExtractor
     end
 
     def filter_branch
-      extractions = @extraction[:extractions].join(' ')
+      extractions = @config[:extractions].join(' ')
       `time git filter-branch --index-filter '
       git read-tree --empty
       git reset $GIT_COMMIT -- #{extractions}
@@ -73,8 +90,8 @@ module CodeExtractor
       cat -
       echo
       echo
-      echo "(transferred from #{@extraction[:upstream_name]}@$GIT_COMMIT)"
-      ' -- #{@extraction[:upstream_branch]} -- #{extractions}`
+      echo "(transferred from #{@config[:upstream_name]}@$GIT_COMMIT)"
+      ' -- #{@config[:upstream_branch]} -- #{extractions}`
     end
   end
 end
