@@ -12,8 +12,8 @@ module CodeExtractor
     def initialize(config_file = 'extractions.yml')
       @config = YAML.load_file(config_file)
 
-      @config[:upstream_branch] ||= "master"
       @config[:destination]       = File.expand_path(@config[:destination])
+      @config[:upstream_branch] ||= "master"
 
       validate!
     end
@@ -33,65 +33,90 @@ module CodeExtractor
     end
   end
 
-  class Runner
-    def initialize config = nil
-      @config = config || Config.new
+  class GitProject
+    attr_reader :name, :url, :git_dir, :new_branch, :source_branch
+
+    def initialize name, url
+      @name   = name
+      @url    = url
     end
 
-    def extract
-      puts @config
-      clone
-      extract_branch
-      remove_remote
-      remove_tags
-      filter_branch
-    end
+    def clone_to destination, origin_name = "upstream"
+      @git_dir ||= destination
 
-    def clone
-      return if Dir.exist?(@config[:destination])
-      puts 'Cloning…'
-      system "git clone -o upstream #{@config[:upstream]} #{@config[:destination]}"
-    end
-
-    def extract_branch
-      puts 'Extracting Branch…'
-      Dir.chdir(@config[:destination])
-      branch = "extract_#{@config[:name]}"
-      `git checkout #{@config[:upstream_branch]}`
-      `git fetch upstream && git rebase upstream/master`
-      if system("git branch | grep #{branch}")
-        `git branch -D #{branch}`
+      if Dir.exist?(git_dir)
+        raise "Not a git dir!" unless system "git -C #{git_dir} status"
+      else
+        puts 'Cloning…'
+        system "git clone --origin #{origin_name} #{url} #{git_dir}"
       end
-      `git checkout -b #{branch}`
-      extractions = @config[:extractions].join(' ')
-      `git rm -r #{extractions}`
-      `git commit -m "Extract #{@config[:name]}"`
+    end
+
+    def extract_branch source_branch, new_branch, extractions
+      puts 'Extracting Branch…'
+      @new_branch    = new_branch
+      @source_branch = source_branch
+      Dir.chdir git_dir do
+        `git checkout #{source_branch}`
+        `git fetch upstream && git rebase upstream/master`
+        if system("git branch | grep #{new_branch}")
+          `git branch -D #{new_branch}`
+        end
+        `git checkout -b #{new_branch}`
+        `git rm -r #{extractions}`
+        `git commit -m "Extract #{name}"`
+      end
     end
 
     def remove_remote
-      `git remote rm upstream`
+      Dir.chdir git_dir do
+        `git remote rm upstream`
+      end
     end
 
     def remove_tags
       puts 'removing tags'
-      tags = `git tag`
-      tags.split.each do |tag|
-        puts "Removing tag #{tag}"
-        `git tag -d #{tag}`
+      Dir.chdir git_dir do
+        tags = `git tag`
+        tags.split.each do |tag|
+          puts "Removing tag #{tag}"
+          `git tag -d #{tag}`
+        end
       end
     end
 
-    def filter_branch
-      extractions = @config[:extractions].join(' ')
-      `time git filter-branch --index-filter '
-      git read-tree --empty
-      git reset $GIT_COMMIT -- #{extractions}
-      ' --msg-filter '
-      cat -
-      echo
-      echo
-      echo "(transferred from #{@config[:upstream_name]}@$GIT_COMMIT)"
-      ' -- #{@config[:upstream_branch]} -- #{extractions}`
+    def filter_branch extractions, upstream_name
+      Dir.chdir git_dir do
+        `time git filter-branch --index-filter '
+        git read-tree --empty
+        git reset $GIT_COMMIT -- #{extractions}
+        ' --msg-filter '
+        cat -
+        echo
+        echo
+        echo "(transferred from #{upstream_name}@$GIT_COMMIT)"
+        ' -- #{source_branch} -- #{extractions}`
+      end
+    end
+  end
+
+  class Runner
+    def initialize config = nil
+      @config         = config || Config.new
+      @source_project = GitProject.new @config[:name], @config[:upstream]
+    end
+
+    def extractions
+      @extractions ||= @config[:extractions].join(' ')
+    end
+
+    def extract
+      puts @config
+      @source_project.clone_to @config[:destination]
+      @source_project.extract_branch @config[:upstream_branch], "extract_#{@config[:name]}", extractions
+      @source_project.remove_remote
+      @source_project.remove_tags
+      @source_project.filter_branch extractions, @config[:upstream_name]
     end
   end
 end
