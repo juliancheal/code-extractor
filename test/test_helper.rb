@@ -223,6 +223,12 @@ module CodeExtractor
       repo.checkout branch
     end
 
+    def checkout_b branch, source = nil
+      repo.create_branch(*[branch, source].compact)
+      repo.checkout branch
+      @last_commit = repo.last_commit
+    end
+
     # Commit with all changes added to the index
     #
     #   $ git add . && git commit -am "${msg}"
