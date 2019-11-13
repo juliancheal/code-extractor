@@ -180,6 +180,11 @@ module CodeExtractor
       repo.generate(&block)
     end
 
+    def self.clone_at url, dir, &block
+      repo = new dir, []
+      repo.clone(url, &block)
+    end
+
     def initialize repo_path, file_struct
       @commit_count = 0
       @repo_path    = Pathname.new repo_path
@@ -193,6 +198,15 @@ module CodeExtractor
 
       git_init
       git_commit_initial
+
+      instance_eval(&block) if block_given?
+    end
+
+    def clone url, &block
+      @repo        = Rugged::Repository.clone_at url, @repo_path.to_s
+      @index       = repo.index
+      @last_commit = repo.last_commit
+      # puts @repo.inspect
 
       instance_eval(&block) if block_given?
     end
