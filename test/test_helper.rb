@@ -44,6 +44,16 @@ module CodeExtractor
       assert tags.empty?, "Expected there to be no tags, but got `#{tags.join ', '}'"
     end
 
+    def assert_commits expected_commits
+      start_commit   = destination_repo.last_commit
+      sorting        = Rugged::SORT_TOPO # aka:  sort like git-log
+      actual_commits = destination_repo.walk(start_commit, sorting).map(&:message)
+
+      actual_commits.map! { |msg| msg.lines.first.chomp }
+
+      assert_equal expected_commits, actual_commits
+    end
+
     # Helper methods
 
     def destination_repo
