@@ -102,6 +102,12 @@ module CodeExtractor
       extractions_hash[:extractions] = @extractions
     end
 
+    def set_destination_dir dir
+      @destination_repo = nil # reset
+      @extracted_dir    = dir
+      extractions_hash[:destination] = @extracted_dir
+    end
+
     def extractions_hash
       @extractions_hash ||= {
         :name          => "my_extractions",
