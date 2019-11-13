@@ -56,6 +56,10 @@ module CodeExtractor
 
     # Helper methods
 
+    def original_repo
+      @original_repo ||= Rugged::Repository.new @repo_dir
+    end
+
     def destination_repo
       @destination_repo ||= Rugged::Repository.new @extracted_dir
     end
@@ -91,7 +95,7 @@ module CodeExtractor
 
       capture_subprocess_io do
         config = Config.new extractions_yml
-        Runner.new(config).extract
+        Runner.new(config).run
       end
     ensure
       Dir.chdir pwd
