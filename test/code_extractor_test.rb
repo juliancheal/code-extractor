@@ -103,48 +103,7 @@ class CodeExtractorTest < CodeExtractor::TestCase
     create_base_repo
     set_extractions ["foo"]
     run_extraction
-
-    # Merge our extracted branch (removed code) into the master branch of the
-    # original repository
-    #
-    is_bare       = true
-    bare_repo_dir = File.join @sandbox_dir, "bare_original.git"
-    Rugged::Repository.init_at bare_repo_dir, is_bare
-
-    # Can't push to a local non-bare repo via Rugged currently... hence this
-    # extra weirdness being done...
-    destination_repo.remotes.create("original", bare_repo_dir)
-    destination_repo.remotes["original"].push [destination_repo.head.name]
-
-    original_repo.remotes.create("origin", bare_repo_dir)
-    original_repo.fetch("origin")
-    original_repo.remotes["origin"].push [original_repo.head.name]
-    original_repo.create_branch "extract_my_extractions", "origin/extract_my_extractions"
-
-    # Code is a combination of the examples found here:
-    #
-    #   - https://github.com/libgit2/rugged/blob/3de6a0a7/test/merge_test.rb#L4-L18
-    #   - http://violetzijing.is-programmer.com/2015/11/6/some_notes_about_rugged.187772.html
-    #   - https://stackoverflow.com/a/27290470
-    #
-    # In otherwords... not obvious how to do a `git merge --no-ff --no-edit`
-    # with rugged... le-sigh...
-    #
-    # TODO: Move into a helper
-    base        = original_repo.branches["master"].target_id
-    topic       = original_repo.branches["extract_my_extractions"].target_id
-    merge_index = original_repo.merge_commits(base, topic)
-
-    Rugged::Commit.create(
-      original_repo,
-      :message    => "Merged branch 'extract_my_extractions' into master",
-      :parents    => [base, topic],
-      :tree       => merge_index.write_tree(original_repo),
-      :update_ref => "HEAD"
-    )
-
-    original_repo.remotes['origin'].push [original_repo.head.name]
-
+    perform_merges_of_extracted_code
 
     # Run new extraction, with some extra commits added to the new repo that
     # has been extracted previously
@@ -169,7 +128,7 @@ class CodeExtractorTest < CodeExtractor::TestCase
     extractions_hash[:name]               = "the_extracted"
     extractions_hash[:reinsert]           = true
     extractions_hash[:target_name]        = "MyOrg/extracted_repo"
-    extractions_hash[:target_remote]      = bare_repo_dir
+    extractions_hash[:target_remote]      = @bare_repo_dir
     extractions_hash[:target_base_branch] = "master"
     extractions_hash[:upstream]           = cloned_extractions_dir
     extractions_hash[:upstream_name]      = "MyOrg/repo"
@@ -222,5 +181,48 @@ class CodeExtractorTest < CodeExtractor::TestCase
       commit
       tag "v2.0"
     end
+  end
+
+  def perform_merges_of_extracted_code
+    # Merge our extracted branch (removed code) into the master branch of the
+    # original repository
+    #
+    is_bare        = true
+    @bare_repo_dir = File.join @sandbox_dir, "bare_original.git"
+    Rugged::Repository.init_at @bare_repo_dir, is_bare
+
+    # Can't push to a local non-bare repo via Rugged currently... hence this
+    # extra weirdness being done...
+    destination_repo.remotes.create("original", @bare_repo_dir)
+    destination_repo.remotes["original"].push [destination_repo.head.name]
+
+    original_repo.remotes.create("origin", @bare_repo_dir)
+    original_repo.fetch("origin")
+    original_repo.remotes["origin"].push [original_repo.head.name]
+    original_repo.create_branch "extract_my_extractions", "origin/extract_my_extractions"
+
+    # Code is a combination of the examples found here:
+    #
+    #   - https://github.com/libgit2/rugged/blob/3de6a0a7/test/merge_test.rb#L4-L18
+    #   - http://violetzijing.is-programmer.com/2015/11/6/some_notes_about_rugged.187772.html
+    #   - https://stackoverflow.com/a/27290470
+    #
+    # In otherwords... not obvious how to do a `git merge --no-ff --no-edit`
+    # with rugged... le-sigh...
+    #
+    # TODO: Move into a helper
+    base        = original_repo.branches["master"].target_id
+    topic       = original_repo.branches["extract_my_extractions"].target_id
+    merge_index = original_repo.merge_commits(base, topic)
+
+    Rugged::Commit.create(
+      original_repo,
+      :message    => "Merged branch 'extract_my_extractions' into master",
+      :parents    => [base, topic],
+      :tree       => merge_index.write_tree(original_repo),
+      :update_ref => "HEAD"
+    )
+
+    original_repo.remotes['origin'].push [original_repo.head.name]
   end
 end
