@@ -103,28 +103,11 @@ class CodeExtractorTest < CodeExtractor::TestCase
     create_base_repo
     set_extractions ["foo"]
     run_extraction
+
+    # Perform updates to extracted repo to simulate changes since extraction
     perform_merges_of_extracted_code
     apply_new_commits_on_extracted_repo
-
-    # Update the configuration for the (second) extraction
-
-    set_extractions ["foo"]
-
-    extractions_hash[:name]               = "the_extracted"
-    extractions_hash[:reinsert]           = true
-    extractions_hash[:target_name]        = "MyOrg/extracted_repo"
-    extractions_hash[:target_remote]      = @bare_repo_dir
-    extractions_hash[:target_base_branch] = "master"
-    extractions_hash[:upstream]           = @cloned_extractions_dir
-    extractions_hash[:upstream_name]      = "MyOrg/repo"
-    extractions_hash[:extra_cmds]         = [
-      "mkdir lib",
-      "mv foo lib",
-      "git add -A",
-      "git commit -m 'Move foo/ into lib/'"
-    ]
-
-    set_destination_dir @new_upstream_dir
+    update_extraction_hash
 
     # Run new extraction, with some extra commits added to the new repo that
     # has been extracted previously
@@ -226,6 +209,49 @@ class CodeExtractorTest < CodeExtractor::TestCase
 
       update_file "foo/baz", "Baz Content"
       commit "add new baz"
+    end
+  end
+
+  # Update the configuration for the (second) extraction
+  #
+  # Boiler plate will do the following:
+  #
+  #   - Assumes "foo/" is still the only extracted directory
+  #   - A "reinsert" is the new action that will be performed
+  #   - The following methods have been executed prior
+  #     * `.create_base_repo`
+  #     * `.perform_merges_of_extracted_code`
+  #     * `.apply_new_commits_on_extracted_repo`
+  #   - As a result, assumes the following instance variables are set:
+  #     * `@new_upstream_dir`
+  #     * `@bare_repo_dir`
+  #     * `@cloned_extractions_dir`
+  #   - The desired behavior of `.extra_cmds` is to move `foo` into `lib/`
+  #
+  # There is a `custom_updates` hash available in the args for adding
+  # additional changes, so if any of the above are not the case, changes can be
+  # made at the end.
+  #
+  def update_extraction_hash custom_updates = {}
+    set_extractions ["foo"]
+    set_destination_dir @new_upstream_dir
+
+    extractions_hash[:name]               = "the_extracted"
+    extractions_hash[:reinsert]           = true
+    extractions_hash[:target_name]        = "MyOrg/extracted_repo"
+    extractions_hash[:target_remote]      = @bare_repo_dir
+    extractions_hash[:target_base_branch] = "master"
+    extractions_hash[:upstream]           = @cloned_extractions_dir
+    extractions_hash[:upstream_name]      = "MyOrg/repo"
+    extractions_hash[:extra_cmds]         = [
+      "mkdir lib",
+      "mv foo lib",
+      "git add -A",
+      "git commit -m 'Move foo/ into lib/'"
+    ]
+
+    custom_updates.each do |hash_key, value|
+      extractions_hash[hash_key] = value
     end
   end
 end
