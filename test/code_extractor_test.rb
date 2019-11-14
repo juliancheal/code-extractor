@@ -2,21 +2,7 @@ require 'test_helper'
 
 class CodeExtractorTest < CodeExtractor::TestCase
   def test_code_extractor
-    repo_structure = %w[
-      foo/bar
-      baz
-    ]
-
-    create_repo repo_structure do
-      update_file "foo/bar", "Bar Content"
-      commit "add Bar content"
-      tag "v1.0"
-
-      add_file "qux", "QUX!!!"
-      commit
-      tag "v2.0"
-    end
-
+    create_base_repo
     set_extractions ["foo"]
     output, _ = run_extraction
 
@@ -113,22 +99,8 @@ class CodeExtractorTest < CodeExtractor::TestCase
   end
 
   def test_unextract_an_extraction
-    repo_structure = %w[
-      foo/bar
-      baz
-    ]
-
-    create_repo repo_structure do
-      update_file "foo/bar", "Bar Content"
-      commit "add Bar content"
-      tag "v1.0"
-
-      add_file "qux", "QUX!!!"
-      commit
-      tag "v2.0"
-    end
-
     # original extraction to work off of, in which we "un-extract" this later
+    create_base_repo
     set_extractions ["foo"]
     run_extraction
 
@@ -232,6 +204,23 @@ class CodeExtractorTest < CodeExtractor::TestCase
       assert File.exist? "qux"
       assert File.exist? "lib/foo/bar"
       assert File.exist? "lib/foo/baz"
+    end
+  end
+
+  def create_base_repo
+    repo_structure = %w[
+      foo/bar
+      baz
+    ]
+
+    create_repo repo_structure do
+      update_file "foo/bar", "Bar Content"
+      commit "add Bar content"
+      tag "v1.0"
+
+      add_file "qux", "QUX!!!"
+      commit
+      tag "v2.0"
     end
   end
 end
