@@ -37,6 +37,23 @@ module CodeExtractor
       FileUtils.remove_entry @sandbox_dir unless ENV["DEBUG"]
     end
 
+    def create_base_repo
+      repo_structure = %w[
+        foo/bar
+        baz
+      ]
+
+      create_repo repo_structure do
+        update_file "foo/bar", "Bar Content"
+        commit "add Bar content"
+        tag "v1.0"
+
+        add_file "qux", "QUX!!!"
+        commit
+        tag "v2.0"
+      end
+    end
+
     # Custom Assertions
 
     def assert_no_tags
