@@ -40,6 +40,101 @@ class CodeExtractorReinsertTest < CodeExtractor::TestCase
     end
   end
 
+  def test_reinsert_when_code_extractor_was_not_used
+    # original extraction to work off of, in which we "un-extract" this later
+    create_base_repo
+    set_extractions ["foo"]
+    run_extraction
+
+    # Perform updates to extracted repo to simulate changes since extraction
+    perform_merges_of_extracted_code
+
+    # Remove `(transferred from Org/repo@-----)` lines from extracted commits
+    #
+    # This is to simulate a case where code_extractor wasn't used to handle the
+    # extraction
+
+    ##################################################
+
+    # TOO MANY HOURS WASTED trying to get Rugged to do a rebase...
+    #
+    # Gave up and did a `git filter-branch --msg-filter`...
+    #
+
+    # puts
+    # current_commit = destination_repo.head.target
+    # puts current_commit.message.lines.reject {|l| l.include? "transferred" }.join
+    # puts "rebasing"
+    # rebase = Rugged::Rebase.new @destination_repo, "master", "HEAD^"#, :inmemory => true
+    # while rebase_commit = rebase.next do
+    #   puts rebase_commit[:id]
+    #   # destination_repo.index.write_tree
+    #   # commit = destination_repo.head.target
+    #   commit = Rugged::Commit.lookup @destination_repo, rebase_commit[:id]
+    #   # puts commit.message
+    #   # puts commit.committer.inspect
+    #   # puts
+    #   # # puts "inmemory_index:"
+    #   # # puts rebase.inmemory_index
+    #   puts "new message"
+    #   puts commit.message.lines.reject {|l| l.include? "transferred" }.join
+    #   puts
+    #   commit_hash = {
+    #   #   :committer => commit.committer,
+    #     :message   => commit.message.lines.reject {|l| l.include? "transferred" }.join
+    #   }
+    #   # rebase.commit(commit_hash)
+    #   # commit.amend commit_hash
+    #   rebase.commit commit.to_hash
+    # end
+    # puts
+    # puts "rebase_commit:"
+    # puts rebase_commit
+    # puts
+
+    # rebase.finish({:name => "system", :email => "system"})
+
+
+    # start_commit   = destination_repo.last_commit
+    # sorting        = Rugged::SORT_TOPO # aka:  sort like git-log
+    # actual_commits = destination_repo.walk(start_commit, sorting).each do |c|
+    #   puts "#{c.oid} #{c.message.lines.first.chomp}"
+    # end
+
+    ##################################################
+
+    Dir.chdir extracted_dir do
+      `git filter-branch -f --msg-filter '
+        cat - | grep -v "(transferred from "
+      ' -- master`
+    end
+
+    destination_repo.checkout "extract_my_extractions"
+
+    apply_new_commits_on_extracted_repo
+    update_extraction_hash
+    run_extraction
+
+    in_git_dir do
+      assert_commits [
+        "Move foo/ into lib/",
+        "add new baz",
+        "update bar content",
+        "Re-insert extractions from MyOrg/extracted_repo",
+        "Merged branch 'extract_my_extractions' into master",
+        "Extract my_extractions",
+        "Commit #3",
+        "add Bar content",
+        "Initial Commit"
+      ]
+
+      refute Dir.exist?  "foo"
+      assert File.exist? "qux"
+      assert File.exist? "lib/foo/bar"
+      assert File.exist? "lib/foo/baz"
+    end
+  end
+
   def perform_merges_of_extracted_code
     # Merge our extracted branch (removed code) into the master branch of the
     # original repository

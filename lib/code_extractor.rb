@@ -34,7 +34,7 @@ module CodeExtractor
   end
 
   class GitProject
-    attr_reader :name, :url, :git_dir, :new_branch, :source_branch, :target_name
+    attr_reader :name, :url, :git_dir, :new_branch, :source_branch, :target_name, :upstream_name
 
     def initialize name, url
       @name   = name
@@ -146,18 +146,17 @@ module CodeExtractor
     def inject_commits target_base_branch, upstream_name
       puts "Injecting commits…"
 
+      @upstream_name     ||= upstream_name
       target_base_branch ||= 'master'
-      commit_msg_filter    = "(transferred from #{upstream_name}"
+
+      @reference_target_branch = "#{target_remote_name}/#{target_base_branch}"
 
       Dir.chdir git_dir do
-        reference_target_branch      = "#{target_remote_name}/#{target_base_branch}"
-        previously_extracted_commits = `git log --pretty="%H" --grep="#{commit_msg_filter}"`
-
         # special commit that will get renamed re-worded to:
         #
         #   Re-insert extractions from #{upstream_name}
         #
-        last_extracted_commit = previously_extracted_commits.lines[0].chomp!
+        last_extracted_commit = previously_extracted_commits.first
         first_injected_msg    = `git show -s --format="%s%n%n%b" #{last_extracted_commit}`
         first_injected_msg    = first_injected_msg.lines.reject { |line|
                                   line.include? commit_msg_filter
@@ -167,15 +166,16 @@ module CodeExtractor
         File.write File.expand_path("../LAST_EXTRACTED_COMMIT_MSG", git_dir), first_injected_msg
 
         `time git filter-branch -f --commit-filter '
-          export was_extracted=$(git show -s --format="%s%n%n%b" $GIT_COMMIT | grep -s "#{commit_msg_filter}")
-          if [ "$GIT_COMMIT" = "#{last_extracted_commit}" ] || [ "$was_extracted" == ""  ]; then
+          export was_extracted="#{previously_extracted_commits.map {|c| "#{c}|" }.join}"
+          echo "#{last_extracted_commit}" > #{File.expand_path("../LAST_EXTRACTED_COMMIT", git_dir)}
+          if [ "$GIT_COMMIT" = "#{last_extracted_commit}" ] || [ -n "${was_extracted##*$GIT_COMMIT|*}"  ]; then
             git commit-tree "$@";
           else
             skip_commit "$@";
           fi
         ' --index-filter '
         git read-tree --empty
-        git reset #{reference_target_branch} -- .
+        git reset #{@reference_target_branch} -- .
         git checkout $GIT_COMMIT -- .
         ' --msg-filter '
           if [ "$GIT_COMMIT" = "#{last_extracted_commit}" ]; then
@@ -188,7 +188,7 @@ module CodeExtractor
           echo "(transferred from #{upstream_name}@$GIT_COMMIT)"
         ' -- #{prune_branch}`
 
-        `git checkout --no-track -b #{inject_branch} #{reference_target_branch}`
+        `git checkout --no-track -b #{inject_branch} #{@reference_target_branch}`
         `git cherry-pick ..#{prune_branch}`
       end
     end
@@ -245,7 +245,7 @@ module CodeExtractor
       Dir.chdir git_dir do
         extractions.each do |file_or_dir|
           if Dir.exist? file_or_dir
-            files = Dir.glob["#{file_or_dir}/**/*"]
+            files = Dir["#{file_or_dir}/**/*"]
           else
             files = [file_or_dir]
           end
@@ -280,6 +280,37 @@ module CodeExtractor
         script.puts "true"
       end
       FileUtils.chmod "+x", @prune_script
+    end
+
+    def commit_msg_filter
+      @commit_msg_filter ||= "(transferred from #{upstream_name}"
+    end
+
+    def previously_extracted_commits
+      return @previously_extracted_commits if defined? @previously_extracted_commits
+
+      @previously_extracted_commits = `git log --pretty="%H" --grep="#{commit_msg_filter}"`.lines
+
+      # Fallback if the extracted code didn't use `code-extractor`
+      #
+      # Effectivelly, we just look for commits that exist in the upstream
+      # branch with the same first line of the commit message, and if that is
+      # found, double check the file changes are the same.
+      #
+      # Not fool proof, but the SHAs will be different unfortunately...
+      #
+      first_commit = @previously_extracted_commits.first
+      if !first_commit or !first_commit.chomp.empty?
+        @previously_extracted_commits = `git log --pretty="%H"`.lines.each(&:chomp!)
+        @previously_extracted_commits.tap do |commits|
+          commits.reject! do |commit|
+            has = `git log --pretty="%H" --grep="$(git show -s --format="%s" #{commit})" #{@reference_target_branch}`
+            has.chomp.empty?
+          end
+        end
+      else
+        @previously_extracted_commits.each(&:chomp!)
+      end
     end
 
     def msg_filter upstream_name
