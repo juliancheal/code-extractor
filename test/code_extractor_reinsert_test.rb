@@ -34,6 +34,8 @@ class CodeExtractorReinsertTest < CodeExtractor::TestCase
       ]
 
       refute Dir.exist?  "foo"
+      refute File.exist?  "README.md"
+
       assert File.exist? "qux"
       assert File.exist? "lib/foo/bar"
       assert File.exist? "lib/foo/baz"
@@ -129,6 +131,68 @@ class CodeExtractorReinsertTest < CodeExtractor::TestCase
       ]
 
       refute Dir.exist?  "foo"
+      refute File.exist?  "README.md"
+
+      assert File.exist? "qux"
+      assert File.exist? "lib/foo/bar"
+      assert File.exist? "lib/foo/baz"
+    end
+  end
+
+  # Basically, a test to ensure we are using a rebase and not a cherry-pick
+  # method, since `git cherry-pick` doesn't handle merge commits well.
+  def test_reinsert_when_there_is_a_merge_commit
+    # original extraction to work off of, in which we "un-extract" this later
+    create_base_repo
+    set_extractions ["foo"]
+    run_extraction
+
+    # Perform updates to extracted repo to simulate changes since extraction
+    perform_merges_of_extracted_code
+    apply_new_commits_on_extracted_repo do
+      checkout_b 'master', 'origin/master'
+
+      update_file "foo/bar", "Updated Bar Content"
+      commit "update bar content"
+
+      checkout_b 'add_baz', 'master'
+
+      update_file "foo/baz", "Baz Content"
+      commit "add new baz"
+
+      checkout 'master'
+      merge 'add_baz'
+
+      add_file "README.md", "READ ME!"
+      commit "add README"
+    end
+    update_extraction_hash
+
+    # Run new extraction, with some extra commits added to the new repo that
+    # has been extracted previously
+    #
+    # This next line will run the actual extraction we are testing
+    #
+    # aka:  updated commits and puts 'lib/foo' back into the original repo
+    run_extraction
+
+    in_git_dir do
+      assert_commits [
+        "Move foo/ into lib/",
+        "Merged branch 'add_baz' into master",
+        "add new baz",
+        "update bar content",
+        "Re-insert extractions from MyOrg/extracted_repo",
+        "Merged branch 'extract_my_extractions' into master",
+        "Extract my_extractions",
+        "Commit #3",
+        "add Bar content",
+        "Initial Commit"
+      ]
+
+      refute Dir.exist?  "foo"
+      refute File.exist?  "README.md"
+
       assert File.exist? "qux"
       assert File.exist? "lib/foo/bar"
       assert File.exist? "lib/foo/baz"
@@ -170,6 +234,9 @@ class CodeExtractorReinsertTest < CodeExtractor::TestCase
 
         update_file "foo/baz", "Baz Content"
         commit "add new baz"
+
+        add_file "README.md", "READ ME!"
+        commit "add README"
       end
     end
 

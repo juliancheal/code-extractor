@@ -94,6 +94,16 @@ module CodeExtractor
       end
     end
 
+    # Three step process to filter out the commits we want in three passes:
+    #
+    #   - Move code we want to keep into a separate tmp dir (using @prune_script)
+    #   - Prune anything that isn't in that subdirectory
+    #   - Move the tmp directory back into the root of the directory
+    #
+    #
+    # Note:  We don't use `--subdirectory-filter` here as it will remove merge
+    # commits, which we don't want.
+    #
     def prune_commits extractions
       puts "Pruning commits…"
 
@@ -102,7 +112,11 @@ module CodeExtractor
       Dir.chdir git_dir do
         `git checkout -b #{prune_branch} #{@source_branch}`
         `git filter-branch -f --prune-empty --tree-filter #{@prune_script} HEAD`
-        `git filter-branch -f --prune-empty --subdirectory-filter #{@keep_directory}`
+        `git filter-branch -f --prune-empty --index-filter '
+            git read-tree --empty
+            git reset $GIT_COMMIT -- #{@keep_directory}
+          'HEAD`
+        `git filter-branch -f --prune-empty --tree-filter 'mv #{@keep_directory}/* .' HEAD`
       end
     end
 
@@ -188,8 +202,28 @@ module CodeExtractor
           echo "(transferred from #{upstream_name}@$GIT_COMMIT)"
         ' -- #{prune_branch}`
 
-        `git checkout --no-track -b #{inject_branch} #{@reference_target_branch}`
-        `git cherry-pick ..#{prune_branch}`
+        # Old (bad:  doesn't handle merges)
+        #
+        # `git checkout --no-track -b #{inject_branch} #{@reference_target_branch}`
+        # `git cherry-pick ..#{prune_branch}`
+        #
+        #
+        # Attempted #1 (not working, but uses older `git` methods)
+        #
+        # `git checkout --orphan #{inject_branch}`
+        # `git commit -m "Dummy Init commit"`
+        # orphan_commit = `git log --pretty="%H" -n1`.chomp
+        # prune_first   = `git log --pretty="%H" --reverse -n1 #{prune_branch}`.chomp
+        # `git rebase --onto #{orphan_commit} #{prune_first} #{inject_branch}`
+        # `git replace #{orphan_commit} #{@reference_target_branch}`
+        #
+        #
+        # Better
+        #
+        # Ref:  git rebase --onto code_extractor_inject_the_extracted --root
+        #
+        `git checkout --no-track -b #{inject_branch} #{prune_branch}`
+        `git rebase --preserve-merges --root --onto #{@reference_target_branch} #{inject_branch}`
       end
     end
 
