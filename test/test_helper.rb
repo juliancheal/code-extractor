@@ -199,7 +199,7 @@ module CodeExtractor
       git_init
       git_commit_initial
 
-      instance_eval(&block) if block_given?
+      execute(&block) if block_given?
     end
 
     def clone url, &block
@@ -208,7 +208,12 @@ module CodeExtractor
       @last_commit = repo.last_commit
       # puts @repo.inspect
 
-      instance_eval(&block) if block_given?
+      execute(&block) if block_given?
+    end
+
+    # Run DSL methods for given TestRepo instance
+    def execute &block
+      instance_eval(&block)
     end
 
     # Create a new branch (don't checkout)
