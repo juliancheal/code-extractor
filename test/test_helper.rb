@@ -173,7 +173,8 @@ module CodeExtractor
   # to be empty, otherwise a defining files in them is enough.
   #
   class TestRepo
-    attr_reader :file_struct, :last_commit, :repo_path, :repo, :index
+    attr_accessor :repo
+    attr_reader   :file_struct, :last_commit, :repo_path,:index
 
     def self.generate repo_path, file_struct, &block
       repo = new repo_path, file_struct
@@ -183,6 +184,15 @@ module CodeExtractor
     def self.clone_at url, dir, &block
       repo = new dir, []
       repo.clone(url, &block)
+    end
+
+    def self.merge repo, branch, base_branch = nil
+      repo = Rugged::Repository.new repo unless repo.is_a? Rugged::Repository
+      dir  = repo.workdir
+
+      test_repo = new dir, []
+      test_repo.repo = repo
+      test_repo.merge branch, base_branch
     end
 
     def initialize repo_path, file_struct
@@ -255,6 +265,41 @@ module CodeExtractor
       repo.tags.create tag_name, @last_commit
     end
 
+    # Add a merge branch into current branch with `--no-ff`
+    #
+    # (AKA:  Merge a PR like on github)
+    #
+    #   $ git merge --no-ff --no-edit
+    #
+    # If `base_branch` is passed, use that, otherwise use `HEAD`
+    #
+    def merge branch, base_branch = nil
+      # Code is a combination of the examples found here:
+      #
+      #   - https://github.com/libgit2/rugged/blob/3de6a0a7/test/merge_test.rb#L4-L18
+      #   - http://violetzijing.is-programmer.com/2015/11/6/some_notes_about_rugged.187772.html
+      #   - https://stackoverflow.com/a/27290470
+      #
+      # In otherwords... not obvious how to do a `git merge --no-ff --no-edit`
+      # with rugged... le-sigh...
+      repo.checkout base_branch if base_branch
+
+      base        = (base_branch ? repo.branches[base_branch] : repo.head).target_id
+      topic       = repo.branches[branch].target_id
+      merge_index = repo.merge_commits(base, topic)
+
+      Rugged::Commit.create(
+        repo,
+        :message    => "Merged branch '#{branch}' into #{base_branch || current_branch_name}",
+        :parents    => [base, topic],
+        :tree       => merge_index.write_tree(repo),
+        :update_ref => "HEAD"
+      )
+
+      repo.checkout_head :strategy => :force
+      @last_commit = repo.last_commit
+    end
+
     # Add (or update) a file in the repo, and optionally write content to it
     #
     # The content is optional, but it will fully overwrite the content
@@ -275,6 +320,10 @@ module CodeExtractor
     def add_to_file entry, content
       path = repo_path.join entry
       File.write path, content, :mode => "a"
+    end
+
+    def current_branch_name
+      repo.head.name.sub(/^refs\/heads\//, '')
     end
 
     private
