@@ -157,19 +157,23 @@ class CodeExtractorReinsertTest < CodeExtractor::TestCase
     original_repo.remotes['origin'].push [original_repo.head.name]
   end
 
-  def apply_new_commits_on_extracted_repo
+  def apply_new_commits_on_extracted_repo &block
     @new_upstream_dir       = File.join @sandbox_dir, "new_upstream.git"
     @cloned_extractions_dir = File.join @sandbox_dir, "cloned_extractions.git"
 
-    CodeExtractor::TestRepo.clone_at extracted_dir, @cloned_extractions_dir do
-      checkout_b 'master', 'origin/master'
+    unless block_given?
+      block = proc do
+        checkout_b 'master', 'origin/master'
 
-      update_file "foo/bar", "Updated Bar Content"
-      commit "update bar content"
+        update_file "foo/bar", "Updated Bar Content"
+        commit "update bar content"
 
-      update_file "foo/baz", "Baz Content"
-      commit "add new baz"
+        update_file "foo/baz", "Baz Content"
+        commit "add new baz"
+      end
     end
+
+    CodeExtractor::TestRepo.clone_at(extracted_dir, @cloned_extractions_dir, &block)
   end
 
   # Update the configuration for the (second) extraction
