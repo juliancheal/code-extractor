@@ -331,19 +331,57 @@ module CodeExtractor
       # branch with the same first line of the commit message, and if that is
       # found, double check the file changes are the same.
       #
-      # Not fool proof, but the SHAs will be different unfortunately...
+      # Not fool proof, but the SHAs will be different unfortunately, so can't
+      # match on that...
       #
       first_commit = @previously_extracted_commits.first
-      if !first_commit or !first_commit.chomp.empty?
-        @previously_extracted_commits = `git log --pretty="%H"`.lines.each(&:chomp!)
-        @previously_extracted_commits.tap do |commits|
-          commits.reject! do |commit|
-            has = `git log --pretty="%H" --grep="$(git show -s --format="%s" #{commit})" #{@reference_target_branch}`
-            has.chomp.empty?
-          end
-        end
-      else
+      if first_commit
         @previously_extracted_commits.each(&:chomp!)
+      else
+        # Long method...
+        #
+        # Test to see if any commit on the target remote include the same full
+        # message as each of the commits.
+        #
+        # Check first by first line of commit for speed, and return just the
+        # matching git SHAs and Author name.  If some exist, then match by full
+        # commit msg.
+        #
+        # fetch author name (%an) and commit sha (%H), using a '|' delimeter
+        #
+        @previously_extracted_commits = `git log --pretty="%an|%H"`.lines.each(&:chomp!)
+        @previously_extracted_commits.map! {|line| line.split "|" }
+        @previously_extracted_commits.tap do |commits|
+          commits.select! do |(author, commit)|
+            # Make sure to escape quotes in commit messages
+            #upstream_msg   = `git show -s --format="%s" #{commit}`.gsub /"/, '\"'
+            #target_commits = `git log --pretty="%H" \
+            #                          --author="#{author}" \
+            #                          --grep="#{upstream_msg.chomp}" \
+            #                          #{@reference_target_branch}`.lines.each(&:chomp!)
+            #
+
+            target_commits = `git log --pretty="%H" --fixed-strings \
+                                      --author="#{author}" \
+                                      --grep="$(git show -s --format="%s" #{commit} | sed 's/"/\\\\"/g')" \
+                                      #{@reference_target_branch}`.lines.each(&:chomp!)
+
+            if target_commits.empty?
+              false
+            else
+              upstream_full_msg = `git show -s --format="%s%n%n%b" #{commit}`
+
+              # TODO:  Change this to a `.one?` check, and if this fails, and
+              # there is more than one, then compare changed file base names...
+              # which is harder still...
+              target_commits.any? do |target_commit|
+                target_full_msg = `git show -s --format="%s%n%n%b" #{target_commit}`
+                upstream_full_msg == target_full_msg
+              end
+            end
+          end
+          commits.map!(&:last)
+        end
       end
     end
 
