@@ -206,10 +206,6 @@ module CodeExtractor
             GIT_COMMITTER_NAME=$(git config user.name)
             GIT_COMMITTER_EMAIL=$(git config user.email)
           fi
-        ' --index-filter '
-        git read-tree --empty
-        git reset #{@reference_target_branch} -- .
-        git checkout $GIT_COMMIT -- .
         ' --msg-filter '
           if [ "$GIT_COMMIT" = "#{last_extracted_commit}" ]; then
             cat #{File.expand_path File.join("..", "LAST_EXTRACTED_COMMIT_MSG"), git_dir}
