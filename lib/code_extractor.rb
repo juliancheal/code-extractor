@@ -166,6 +166,7 @@ module CodeExtractor
       @reference_target_branch = "#{target_remote_name}/#{target_base_branch}"
 
       Dir.chdir git_dir do
+        `git checkout #{prune_branch}`
         # special commit that will get renamed re-worded to:
         #
         #   Re-insert extractions from #{upstream_name}
@@ -189,6 +190,7 @@ module CodeExtractor
 
         File.write File.expand_path("../LAST_EXTRACTED_COMMIT_MSG", git_dir), first_injected_msg
 
+        `git checkout --no-track -b #{inject_branch} #{prune_branch}`
         `time git filter-branch -f --commit-filter '
           export was_extracted="#{previously_extracted_commits.map {|c| "#{c}|" }.join}"
           echo "#{last_extracted_commit}" > #{File.expand_path("../LAST_EXTRACTED_COMMIT", git_dir)}
@@ -217,7 +219,7 @@ module CodeExtractor
           echo
           echo
           echo "(transferred from #{upstream_name}@$GIT_COMMIT)"
-        ' -- #{prune_branch}`
+        ' -- #{inject_branch}`
 
         # Old (bad:  doesn't handle merges)
         #
@@ -239,8 +241,7 @@ module CodeExtractor
         #
         # Ref:  git rebase --onto code_extractor_inject_the_extracted --root
         #
-        `git checkout --no-track -b #{inject_branch} #{prune_branch}`
-        `git rebase --preserve-merges --root --onto #{@reference_target_branch} #{inject_branch}`
+        `git rebase --rebase-merges=rebase-cousins --root --onto #{@reference_target_branch} #{inject_branch}`
       end
     end
 
