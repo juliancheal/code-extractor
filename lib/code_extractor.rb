@@ -115,7 +115,7 @@ module CodeExtractor
         `git filter-branch -f --prune-empty --index-filter '
             git read-tree --empty
             git reset $GIT_COMMIT -- #{@keep_directory}
-          'HEAD`
+          ' HEAD`
         `git filter-branch -f --prune-empty --tree-filter 'mv #{@keep_directory}/* .' HEAD`
       end
     end
