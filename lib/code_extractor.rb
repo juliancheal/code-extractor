@@ -175,8 +175,18 @@ module CodeExtractor
         first_injected_msg    = first_injected_msg.lines.reject { |line|
                                   line.include? commit_msg_filter
                                 }.join
-        first_injected_msg.prepend "*** Original Commit message shown below ***\n\n"
-        first_injected_msg.prepend "Re-insert extractions from #{target_name}\n\n"
+
+        committer_data = `git show -s --format="%an|%ae|%ad|%cn|%ce|%cd" #{last_extracted_commit}`.split("|")
+
+        first_injected_msg.prepend <<-COMMIT_MSG.gsub(/^ {10}/, '')
+          Re-insert extractions from #{target_name}
+
+          *** Original Commit message shown below ***
+
+          Author:    #{committer_data[0]} #{committer_data[1]} #{committer_data[2]}
+          Committer: #{committer_data[3]} #{committer_data[4]} #{committer_data[5]}
+        COMMIT_MSG
+
         File.write File.expand_path("../LAST_EXTRACTED_COMMIT_MSG", git_dir), first_injected_msg
 
         `time git filter-branch -f --commit-filter '
@@ -186,6 +196,13 @@ module CodeExtractor
             git commit-tree "$@";
           else
             skip_commit "$@";
+          fi
+        ' --env-filter '
+          if [ "$GIT_COMMIT" = "#{last_extracted_commit}" ]; then
+            GIT_AUTHOR_NAME=$(git config user.name)
+            GIT_AUTHOR_EMAIL=$(git config user.email)
+            GIT_COMMITTER_NAME=$(git config user.name)
+            GIT_COMMITTER_EMAIL=$(git config user.email)
           fi
         ' --index-filter '
         git read-tree --empty
