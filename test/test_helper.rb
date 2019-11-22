@@ -21,7 +21,7 @@ module CodeExtractor
   # test, and clean up when it is done.
   #
   class TestCase < Minitest::Test
-    attr_writer :extractions, :extractions_hash
+    attr_writer :extractions, :extractions_hash, :reference_repo_dir
     attr_reader :extracted_dir, :repo_dir, :sandbox_dir
 
     # Create a sandbox for the given test, and name it after the test class and
@@ -61,14 +61,30 @@ module CodeExtractor
       assert tags.empty?, "Expected there to be no tags, but got `#{tags.join ', '}'"
     end
 
+    TRANSFERRED_FROM_REGEXP = /\(transferred from (?<UPSTREAM>[^@]*)@(?<SHA>[^\)]*)\)/
     def assert_commits expected_commits
       start_commit   = destination_repo.last_commit
       sorting        = Rugged::SORT_TOPO # aka:  sort like git-log
-      actual_commits = destination_repo.walk(start_commit, sorting).map(&:message)
+      actual_commits = destination_repo.walk(start_commit, sorting).map {|c| c }
+      commit_msgs    = actual_commits.map { |commit| commit.message.lines.first.chomp }
 
-      actual_commits.map! { |msg| msg.lines.first.chomp }
+      assert_equal expected_commits, commit_msgs
 
-      assert_equal expected_commits, actual_commits
+      # Check that the "transferred from ..." reference line is correct
+      actual_commits.map do |commit|
+        [
+          commit,
+          commit.message.lines.last.match(TRANSFERRED_FROM_REGEXP)
+        ]
+      end.each do |commit, transfered|
+        next unless transfered
+
+        transferred_commit = reference_repo.lookup(transfered[:SHA])
+        assert transferred_commit.is_a?(Rugged::Commit),
+          "'transfered from' of #{transfered[:SHA]} from #{commit} is not a valid commit"
+        assert_equal commit.message.lines.first.chomp,
+          transferred_commit.message.lines.first.chomp
+      end
     end
 
     # Helper methods
@@ -79,6 +95,10 @@ module CodeExtractor
 
     def destination_repo
       @destination_repo ||= Rugged::Repository.new @extracted_dir
+    end
+
+    def reference_repo
+      @reference_repo ||= Rugged::Repository.new @reference_repo_dir
     end
 
     def current_commit_message

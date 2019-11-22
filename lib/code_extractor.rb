@@ -104,14 +104,16 @@ module CodeExtractor
     # Note:  We don't use `--subdirectory-filter` here as it will remove merge
     # commits, which we don't want.
     #
-    def prune_commits extractions
+    def prune_commits extractions, upstream_name
       puts "Pruning commits…"
+
+      @upstream_name ||= upstream_name
 
       build_prune_script extractions
 
       Dir.chdir git_dir do
         `git checkout -b #{prune_branch} #{@source_branch}`
-        `git filter-branch -f --prune-empty --tree-filter #{@prune_script} HEAD`
+        `git filter-branch -f --prune-empty --tree-filter #{@prune_script} #{msg_filter upstream_name} HEAD`
         `git filter-branch -f --prune-empty --index-filter '
             git read-tree --empty
             git reset $GIT_COMMIT -- #{@keep_directory}
@@ -156,12 +158,10 @@ module CodeExtractor
     # branch, and the "root" commit assumes the parent of the current HEAD of
     # the target remote's (master) branch
     #
-    def inject_commits target_base_branch, upstream_name
+    def inject_commits target_base_branch
       puts "Injecting commits…"
 
-      @upstream_name     ||= upstream_name
-      target_base_branch ||= 'master'
-
+      target_base_branch     ||= 'master'
       @reference_target_branch = "#{target_remote_name}/#{target_base_branch}"
 
       Dir.chdir git_dir do
@@ -211,9 +211,6 @@ module CodeExtractor
           else
             cat -
           fi
-          echo
-          echo
-          echo "(transferred from #{upstream_name}@$GIT_COMMIT)"
         ' -- #{inject_branch}`
 
         # Old (bad:  doesn't handle merges)
@@ -383,13 +380,15 @@ module CodeExtractor
               false
             else
               upstream_full_msg = `git show -s --format="%s%n%n%b" #{commit}`
+              upstream_full_msg.gsub! /^\(transferred from #{upstream_name}@.*$/, ''
 
               # TODO:  Change this to a `.one?` check, and if this fails, and
               # there is more than one, then compare changed file base names...
               # which is harder still...
               target_commits.any? do |target_commit|
                 target_full_msg = `git show -s --format="%s%n%n%b" #{target_commit}`
-                upstream_full_msg == target_full_msg
+                target_full_msg.gsub! /^\(transferred from #{upstream_name}@.*$/, ''
+                upstream_full_msg.strip == target_full_msg.strip
               end
             end
           end
@@ -443,10 +442,10 @@ module CodeExtractor
     def reinsert
       return unless @config[:reinsert]
 
-      @source_project.prune_commits @config[:extractions]
+      @source_project.prune_commits @config[:extractions], @config[:upstream_name]
       @source_project.run_extra_cmds @config[:extra_cmds]
       @source_project.add_target_remote @config[:target_name], @config[:target_remote]
-      @source_project.inject_commits @config[:target_base_branch], @config[:upstream_name]
+      @source_project.inject_commits @config[:target_base_branch]
 
       true
     end

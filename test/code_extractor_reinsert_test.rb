@@ -240,6 +240,7 @@ class CodeExtractorReinsertTest < CodeExtractor::TestCase
       end
     end
 
+    self.reference_repo_dir = @cloned_extractions_dir
     CodeExtractor::TestRepo.clone_at(extracted_dir, @cloned_extractions_dir, &block)
   end
 
