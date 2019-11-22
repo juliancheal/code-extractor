@@ -180,7 +180,7 @@ module CodeExtractor
         committer_data = `git show -s --format="%an|%ae|%ad|%cn|%ce|%cd" #{last_extracted_commit}`.split("|")
 
         first_injected_msg.prepend <<-COMMIT_MSG.gsub(/^ {10}/, '')
-          Re-insert extractions from #{target_name}
+          Re-insert extractions from #{upstream_name}
 
           *** Original Commit message shown below ***
 
@@ -331,7 +331,7 @@ module CodeExtractor
     end
 
     def commit_msg_filter
-      @commit_msg_filter ||= "(transferred from #{upstream_name}"
+      @commit_msg_filter ||= "(transferred from #{target_name}"
     end
 
     def previously_extracted_commits

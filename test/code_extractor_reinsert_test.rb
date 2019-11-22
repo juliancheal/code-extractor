@@ -269,11 +269,11 @@ class CodeExtractorReinsertTest < CodeExtractor::TestCase
 
     extractions_hash[:name]               = "the_extracted"
     extractions_hash[:reinsert]           = true
-    extractions_hash[:target_name]        = "MyOrg/extracted_repo"
+    extractions_hash[:target_name]        = "MyOrg/repo"
     extractions_hash[:target_remote]      = @bare_repo_dir
     extractions_hash[:target_base_branch] = "master"
     extractions_hash[:upstream]           = @cloned_extractions_dir
-    extractions_hash[:upstream_name]      = "MyOrg/repo"
+    extractions_hash[:upstream_name]      = "MyOrg/extracted_repo"
     extractions_hash[:extra_cmds]         = [
       "mkdir lib",
       "mv foo lib",
