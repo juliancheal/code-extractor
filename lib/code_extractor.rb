@@ -125,7 +125,6 @@ module CodeExtractor
       @target_name = target_name
 
       Dir.chdir git_dir do
-        puts "git remote add #{target_remote_name} #{target_remote}"
         `git remote add #{target_remote_name} #{target_remote}`
         `git fetch #{target_remote_name}`
       end
