@@ -287,6 +287,7 @@ module CodeExtractor
       prune_mvs       = []
 
       Dir.chdir git_dir do
+        `git checkout #{source_branch}`
         extractions.each do |file_or_dir|
           if Dir.exist? file_or_dir
             files = Dir["#{file_or_dir}/**/*"]
@@ -295,7 +296,8 @@ module CodeExtractor
           end
 
           files.each do |extraction_file|
-            file_and_ancestors = `#{git_log_follow} -- #{extraction_file}`.split("\n").uniq
+            raw_file_history   = `#{git_log_follow} -- #{extraction_file}`
+            file_and_ancestors = raw_file_history.split("\n").uniq
 
             file_and_ancestors.reject! { |file| file.length == 0 }
 
