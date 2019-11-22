@@ -327,7 +327,7 @@ module CodeExtractor
     end
 
     def commit_msg_filter
-      @commit_msg_filter ||= "(transferred from #{target_name}"
+      @commit_msg_filter ||= "(transferred from #{target_name}@"
     end
 
     def previously_extracted_commits
