@@ -13,7 +13,7 @@ TEST_SANDBOX = File.join TEST_DIR, "tmp", "sandbox"
 
 FileUtils.mkdir_p TEST_SANDBOX
 
-class CodeExtractor
+module CodeExtractor
   # Base class for all test classes.
   #
   # Will create a sandbox directory in `test/tmp/sandbox`, uniq to each test
@@ -80,7 +80,8 @@ class CodeExtractor
       File.write extractions_yml, extractions_yaml
 
       capture_subprocess_io do
-        CodeExtractor.new(extractions_yml).extract
+        config = Config.new extractions_yml
+        Runner.new(config).extract
       end
     ensure
       Dir.chdir pwd

@@ -2,77 +2,122 @@ require 'yaml'
 
 # Class to extract files and folders from a git repository, while maintaining
 # The git history.
-class CodeExtractor
-  attr_reader :extraction
-
-  def self.run
-    new.extract
+module CodeExtractor
+  def run
+    Runner.new.extract
   end
+  module_function :run
 
-  def initialize(extraction = 'extractions.yml')
-    @extraction = YAML.load_file(extraction)
-    @extraction[:upstream_branch] ||= "master"
+  class Config
+    def initialize(config_file = 'extractions.yml')
+      @config = YAML.load_file(config_file)
 
-    missing = %i[name destination upstream upstream_name extractions].reject { |k| @extraction[k] }
-    raise ArgumentError, "#{missing.map(&:inspect).join(", ")} key(s) missing" if missing.any?
+      @config[:destination]       = File.expand_path(@config[:destination])
+      @config[:upstream_branch] ||= "master"
 
-    @extraction[:destination] = File.expand_path(@extraction[:destination])
-  end
-
-  def extract
-    puts @extraction
-    clone
-    extract_branch
-    remove_remote
-    remove_tags
-    filter_branch
-  end
-
-  def clone
-    return if Dir.exist?(@extraction[:destination])
-    puts 'Cloning…'
-    system "git clone -o upstream #{@extraction[:upstream]} #{@extraction[:destination]}"
-  end
-
-  def extract_branch
-    puts 'Extracting Branch…'
-    Dir.chdir(@extraction[:destination])
-    branch = "extract_#{@extraction[:name]}"
-    `git checkout #{@extraction[:upstream_branch]}`
-    `git fetch upstream && git rebase upstream/master`
-    if system("git branch | grep #{branch}")
-      `git branch -D #{branch}`
+      validate!
     end
-    `git checkout -b #{branch}`
-    extractions = @extraction[:extractions].join(' ')
-    `git rm -r #{extractions}`
-    `git commit -m "Extract #{@extraction[:name]}"`
-  end
 
-  def remove_remote
-    `git remote rm upstream`
-  end
+    def [](key)
+      @config[key]
+    end
 
-  def remove_tags
-    puts 'removing tags'
-    tags = `git tag`
-    tags.split.each do |tag|
-      puts "Removing tag #{tag}"
-      `git tag -d #{tag}`
+    def inspect
+      @config.inspect
+    end
+    alias to_s inspect
+
+    def validate!
+      missing = %i[name destination upstream upstream_name extractions].reject { |k| @config[k] }
+      raise ArgumentError, "#{missing.map(&:inspect).join(", ")} key(s) missing" if missing.any?
     end
   end
 
-  def filter_branch
-    extractions = @extraction[:extractions].join(' ')
-    `time git filter-branch --index-filter '
-    git read-tree --empty
-    git reset $GIT_COMMIT -- #{extractions}
-    ' --msg-filter '
-    cat -
-    echo
-    echo
-    echo "(transferred from #{@extraction[:upstream_name]}@$GIT_COMMIT)"
-    ' -- #{@extraction[:upstream_branch]} -- #{extractions}`
+  class GitProject
+    attr_reader :name, :url, :git_dir, :new_branch, :source_branch
+
+    def initialize name, url
+      @name   = name
+      @url    = url
+    end
+
+    def clone_to destination, origin_name = "upstream"
+      @git_dir ||= destination
+
+      if Dir.exist?(git_dir)
+        raise "Not a git dir!" unless system "git -C #{git_dir} status"
+      else
+        puts 'Cloning…'
+        system "git clone --origin #{origin_name} #{url} #{git_dir}"
+      end
+    end
+
+    def extract_branch source_branch, new_branch, extractions
+      puts 'Extracting Branch…'
+      @new_branch    = new_branch
+      @source_branch = source_branch
+      Dir.chdir git_dir do
+        `git checkout #{source_branch}`
+        `git fetch upstream && git rebase upstream/master`
+        if system("git branch | grep #{new_branch}")
+          `git branch -D #{new_branch}`
+        end
+        `git checkout -b #{new_branch}`
+        `git rm -r #{extractions}`
+        `git commit -m "Extract #{name}"`
+      end
+    end
+
+    def remove_remote
+      Dir.chdir git_dir do
+        `git remote rm upstream`
+      end
+    end
+
+    def remove_tags
+      puts 'removing tags'
+      Dir.chdir git_dir do
+        tags = `git tag`
+        tags.split.each do |tag|
+          puts "Removing tag #{tag}"
+          `git tag -d #{tag}`
+        end
+      end
+    end
+
+    def filter_branch extractions, upstream_name
+      Dir.chdir git_dir do
+        `time git filter-branch --index-filter '
+        git read-tree --empty
+        git reset $GIT_COMMIT -- #{extractions}
+        ' --msg-filter '
+        cat -
+        echo
+        echo
+        echo "(transferred from #{upstream_name}@$GIT_COMMIT)"
+        ' -- #{source_branch} -- #{extractions}`
+      end
+    end
+  end
+
+  class Runner
+    def initialize config = nil
+      @config         = config || Config.new
+      @source_project = GitProject.new @config[:name], @config[:upstream]
+    end
+
+    def extractions
+      @extractions ||= @config[:extractions].join(' ')
+    end
+
+    def extract
+      puts @config
+      @source_project.clone_to @config[:destination]
+      @source_project.extract_branch @config[:upstream_branch], "extract_#{@config[:name]}", extractions
+      @source_project.remove_remote
+      @source_project.remove_tags
+      @source_project.filter_branch extractions, @config[:upstream_name]
+    end
   end
 end
 
