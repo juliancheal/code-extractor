@@ -263,12 +263,12 @@ module CodeExtractor
     # files (extractions) from their current location in a given commit to a
     # unused directory.
     #
-    # More complicated than it looks, this will be used as part of a two-phased
+    # More complicated than it looks, this will be used as part of a three part
     # `git filter-branch` to:
     #
     #   1. move extractable files into a subdirectory with `--tree-filter`
-    #   2. only keep commits for files moved into that subdirectory, and make
-    #      the subdirectory the new project root.
+    #   2. only keep commits for files moved into that subdirectory
+    #   3. make the subdirectory the new project root.
     #
     # For consistency, we want to keep the subdirectories' structure in the
     # same line as what was there previously, so this script helps do that, and
