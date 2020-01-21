@@ -26,6 +26,13 @@ namespace :test do
     sandbox_dir = File.join "test", "tmp"
     rm_rf sandbox_dir
   end
+
+
+  desc "run a DEBUG test run after cleaning"
+  task :debug => :clean do
+    ENV["DEBUG"] = "1"
+    Rake::Task["test"].invoke
+  end
 end
 
 task :default => :test

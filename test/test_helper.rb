@@ -21,7 +21,7 @@ module CodeExtractor
   # test, and clean up when it is done.
   #
   class TestCase < Minitest::Test
-    attr_writer :extractions, :extractions_hash
+    attr_writer :extractions, :extractions_hash, :reference_repo_dir
     attr_reader :extracted_dir, :repo_dir, :sandbox_dir
 
     # Create a sandbox for the given test, and name it after the test class and
@@ -37,6 +37,23 @@ module CodeExtractor
       FileUtils.remove_entry @sandbox_dir unless ENV["DEBUG"]
     end
 
+    def create_base_repo
+      repo_structure = %w[
+        foo/bar
+        baz
+      ]
+
+      create_repo repo_structure do
+        update_file "foo/bar", "Bar Content"
+        commit "add Bar content"
+        tag "v1.0"
+
+        add_file "qux", "QUX!!!"
+        commit
+        tag "v2.0"
+      end
+    end
+
     # Custom Assertions
 
     def assert_no_tags
@@ -44,10 +61,44 @@ module CodeExtractor
       assert tags.empty?, "Expected there to be no tags, but got `#{tags.join ', '}'"
     end
 
+    TRANSFERRED_FROM_REGEXP = /\(transferred from (?<UPSTREAM>[^@]*)@(?<SHA>[^\)]*)\)/
+    def assert_commits expected_commits
+      start_commit   = destination_repo.last_commit
+      sorting        = Rugged::SORT_TOPO # aka:  sort like git-log
+      actual_commits = destination_repo.walk(start_commit, sorting).map {|c| c }
+      commit_msgs    = actual_commits.map { |commit| commit.message.lines.first.chomp }
+
+      assert_equal expected_commits, commit_msgs
+
+      # Check that the "transferred from ..." reference line is correct
+      actual_commits.map do |commit|
+        [
+          commit,
+          commit.message.lines.last.match(TRANSFERRED_FROM_REGEXP)
+        ]
+      end.each do |commit, transfered|
+        next unless transfered
+
+        transferred_commit = reference_repo.lookup(transfered[:SHA])
+        assert transferred_commit.is_a?(Rugged::Commit),
+          "'transfered from' of #{transfered[:SHA]} from #{commit} is not a valid commit"
+        assert_equal commit.message.lines.first.chomp,
+          transferred_commit.message.lines.first.chomp
+      end
+    end
+
     # Helper methods
+
+    def original_repo
+      @original_repo ||= Rugged::Repository.new @repo_dir
+    end
 
     def destination_repo
       @destination_repo ||= Rugged::Repository.new @extracted_dir
+    end
+
+    def reference_repo
+      @reference_repo ||= Rugged::Repository.new @reference_repo_dir
     end
 
     def current_commit_message
@@ -81,7 +132,7 @@ module CodeExtractor
 
       capture_subprocess_io do
         config = Config.new extractions_yml
-        Runner.new(config).extract
+        Runner.new(config).run
       end
     ensure
       Dir.chdir pwd
@@ -90,6 +141,12 @@ module CodeExtractor
     def set_extractions new_extractions
       @extractions = new_extractions
       extractions_hash[:extractions] = @extractions
+    end
+
+    def set_destination_dir dir
+      @destination_repo = nil # reset
+      @extracted_dir    = dir
+      extractions_hash[:destination] = @extracted_dir
     end
 
     def extractions_hash
@@ -157,11 +214,26 @@ module CodeExtractor
   # to be empty, otherwise a defining files in them is enough.
   #
   class TestRepo
-    attr_reader :file_struct, :last_commit, :repo_path, :repo, :index
+    attr_accessor :repo
+    attr_reader   :file_struct, :last_commit, :repo_path,:index
 
     def self.generate repo_path, file_struct, &block
       repo = new repo_path, file_struct
       repo.generate(&block)
+    end
+
+    def self.clone_at url, dir, &block
+      repo = new dir, []
+      repo.clone(url, &block)
+    end
+
+    def self.merge repo, branch, base_branch = nil
+      repo = Rugged::Repository.new repo unless repo.is_a? Rugged::Repository
+      dir  = repo.workdir
+
+      test_repo = new dir, []
+      test_repo.repo = repo
+      test_repo.merge branch, base_branch
     end
 
     def initialize repo_path, file_struct
@@ -178,7 +250,21 @@ module CodeExtractor
       git_init
       git_commit_initial
 
-      instance_eval(&block) if block_given?
+      execute(&block) if block_given?
+    end
+
+    def clone url, &block
+      @repo        = Rugged::Repository.clone_at url, @repo_path.to_s
+      @index       = repo.index
+      @last_commit = repo.last_commit
+      # puts @repo.inspect
+
+      execute(&block) if block_given?
+    end
+
+    # Run DSL methods for given TestRepo instance
+    def execute &block
+      instance_eval(&block)
     end
 
     # Create a new branch (don't checkout)
@@ -191,6 +277,12 @@ module CodeExtractor
 
     def checkout branch
       repo.checkout branch
+    end
+
+    def checkout_b branch, source = nil
+      repo.create_branch(*[branch, source].compact)
+      repo.checkout branch
+      @last_commit = repo.last_commit
     end
 
     # Commit with all changes added to the index
@@ -214,6 +306,41 @@ module CodeExtractor
       repo.tags.create tag_name, @last_commit
     end
 
+    # Add a merge branch into current branch with `--no-ff`
+    #
+    # (AKA:  Merge a PR like on github)
+    #
+    #   $ git merge --no-ff --no-edit
+    #
+    # If `base_branch` is passed, use that, otherwise use `HEAD`
+    #
+    def merge branch, base_branch = nil
+      # Code is a combination of the examples found here:
+      #
+      #   - https://github.com/libgit2/rugged/blob/3de6a0a7/test/merge_test.rb#L4-L18
+      #   - http://violetzijing.is-programmer.com/2015/11/6/some_notes_about_rugged.187772.html
+      #   - https://stackoverflow.com/a/27290470
+      #
+      # In otherwords... not obvious how to do a `git merge --no-ff --no-edit`
+      # with rugged... le-sigh...
+      repo.checkout base_branch if base_branch
+
+      base        = (base_branch ? repo.branches[base_branch] : repo.head).target_id
+      topic       = repo.branches[branch].target_id
+      merge_index = repo.merge_commits(base, topic)
+
+      Rugged::Commit.create(
+        repo,
+        :message    => "Merged branch '#{branch}' into #{base_branch || current_branch_name}",
+        :parents    => [base, topic],
+        :tree       => merge_index.write_tree(repo),
+        :update_ref => "HEAD"
+      )
+
+      repo.checkout_head :strategy => :force
+      @last_commit = repo.last_commit
+    end
+
     # Add (or update) a file in the repo, and optionally write content to it
     #
     # The content is optional, but it will fully overwrite the content
@@ -234,6 +361,10 @@ module CodeExtractor
     def add_to_file entry, content
       path = repo_path.join entry
       File.write path, content, :mode => "a"
+    end
+
+    def current_branch_name
+      repo.head.name.sub(/^refs\/heads\//, '')
     end
 
     private

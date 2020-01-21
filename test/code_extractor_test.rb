@@ -2,21 +2,7 @@ require 'test_helper'
 
 class CodeExtractorTest < CodeExtractor::TestCase
   def test_code_extractor
-    repo_structure = %w[
-      foo/bar
-      baz
-    ]
-
-    create_repo repo_structure do
-      update_file "foo/bar", "Bar Content"
-      commit "add Bar content"
-      tag "v1.0"
-
-      add_file "qux", "QUX!!!"
-      commit
-      tag "v2.0"
-    end
-
+    create_base_repo
     set_extractions ["foo"]
     output, _ = run_extraction
 
