@@ -243,7 +243,30 @@ module CodeExtractor
         #
         # Ref:  git rebase --onto code_extractor_inject_the_extracted --root
         #
-        `git rebase --rebase-merges=rebase-cousins --root --onto #{@reference_target_branch} #{inject_branch}`
+
+        # Grafting Testing
+        #
+        graft_parent_commit = false
+        if graft_parent_commit
+          # Attempt #1
+          #
+          # orphan_branch = "code_extractor_orphan_branch_#{Time.now.to_i}"
+          # `git checkout --orphan #{orphan_branch}`
+          # `git rm -rf ./*`
+          # `git commit --allow-empty -m "Empty Commit"`
+          # `git rebase --rebase-merges=rebase-cousins --root --onto #{orphan_branch} #{inject_branch}`
+          #
+          # Attempt #2
+          #
+          # `git replace --graft fe8c6c6228 250a0b46fb05ad5891d442745b93543c38ee0914`
+
+          `git checkout -b old_base #{graft_parent_commit}`
+          `git checkout #{inject_branch}` # TODO:  needed?
+          `git rebase --rebase-merges=rebase-cousins --onto old_base #{inject_branch}`
+          `git merge --no-ff #{@reference_target_branch}`
+        else
+          `git rebase --rebase-merges=rebase-cousins --root --onto #{@reference_target_branch} #{inject_branch}`
+        end
       end
     end
 
