@@ -176,6 +176,16 @@ module CodeExtractor
                                   line.include? commit_msg_filter
                                 }.join
 
+        # Fetch "committer data" from the `last_extracted_commit` in a bar
+        # delimited format.  Fetches the following data from the commit:
+        #
+        #  - Author Name
+        #  - Author Email
+        #  - Author Date of commit
+        #  - Committer Name
+        #  - Committer Email
+        #  - Committer Date of commit
+        #
         committer_data = `git show -s --format="%an|%ae|%ad|%cn|%ce|%cd" #{last_extracted_commit}`.split("|")
 
         first_injected_msg.prepend <<-COMMIT_MSG.gsub(/^ {10}/, '')
